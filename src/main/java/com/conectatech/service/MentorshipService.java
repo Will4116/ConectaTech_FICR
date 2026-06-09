@@ -13,8 +13,15 @@ import com.conectatech.repository.MentorshipRequestRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
+/**
+ * Arquivo: src/main/java/com/conectatech/service/MentorshipService.java
+ *
+ * ALTERAÇÕES em relação ao original:
+ *   + Método getMentorshipsByMentor(UUID mentorId) para o dashboard.
+ */
 @Service
 public class MentorshipService {
 
@@ -27,17 +34,8 @@ public class MentorshipService {
         this.userService = userService;
     }
 
-    /**
-     * Cria uma nova solicitação de mentoria.
-     *
-     * <p>Regras de negócio:
-     * <ul>
-     *   <li>O solicitante (mentee) deve ter o role MENTEE.</li>
-     *   <li>O receptor (mentor) deve ter o role MENTOR.</li>
-     *   <li>Um mentorado não pode solicitar mentoria para si mesmo.</li>
-     *   <li>Não pode haver uma solicitação PENDING ou ACCEPTED já existente entre o mesmo par.</li>
-     * </ul>
-     */
+    // ── Criar solicitação ─────────────────────────────────────────────────────
+
     @Transactional
     public MentorshipResponse createMentorship(CreateMentorshipRequest request) {
         User mentee = userService.findUserOrThrow(request.menteeId());
@@ -54,16 +52,27 @@ public class MentorshipService {
         return MentorshipResponse.from(saved);
     }
 
+    // ── Listar solicitações do mentor ─────────────────────────────────────────
+
     /**
-     * Atualiza o status de uma solicitação de mentoria.
-     *
-     * <p>Regras de negócio:
-     * <ul>
-     *   <li>Apenas o mentor da solicitação pode aceitar ou recusar.</li>
-     *   <li>O mentor não pode voltar atrás: ACCEPTED ou REJECTED são estados finais.</li>
-     *   <li>Não é permitido definir o status como PENDING manualmente.</li>
-     * </ul>
+     * Retorna todas as solicitações recebidas por um mentor,
+     * ordenadas da mais recente para a mais antiga.
+     * Chamado pelo GET /api/mentorships?mentorId=
      */
+    @Transactional(readOnly = true)
+    public List<MentorshipResponse> getMentorshipsByMentor(UUID mentorId) {
+        // Garante que o mentor existe antes de consultar
+        userService.findUserOrThrow(mentorId);
+
+        return mentorshipRequestRepository
+                .findByMentorIdOrderByCreatedAtDesc(mentorId)
+                .stream()
+                .map(MentorshipResponse::from)
+                .toList();
+    }
+
+    // ── Atualizar status ──────────────────────────────────────────────────────
+
     @Transactional
     public MentorshipResponse updateStatus(UUID mentorshipId, UpdateMentorshipStatusRequest request) {
         MentorshipRequest mentorship = findMentorshipOrThrow(mentorshipId);
@@ -136,7 +145,7 @@ public class MentorshipService {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helper ────────────────────────────────────────────────────────────────
 
     private MentorshipRequest findMentorshipOrThrow(UUID id) {
         return mentorshipRequestRepository.findById(id)
